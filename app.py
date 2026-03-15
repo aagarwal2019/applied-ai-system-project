@@ -2,6 +2,23 @@ import random
 import streamlit as st
 from logic_utils import get_range_for_difficulty, parse_guess, check_guess, update_score
 
+
+def get_hot_cold(guess, secret, low, high):
+    """Return a hot/cold emoji label based on how close the guess is to the secret."""
+    distance = abs(guess - secret)
+    span = high - low
+    ratio = distance / span if span > 0 else 1
+    if ratio <= 0.05:
+        return "🔥 Burning Hot!"
+    if ratio <= 0.15:
+        return "♨️ Hot"
+    if ratio <= 0.30:
+        return "🌡️ Warm"
+    if ratio <= 0.50:
+        return "🧊 Cold"
+    return "❄️ Freezing Cold!"
+
+
 st.set_page_config(page_title="Glitchy Guesser", page_icon="🎮")
 
 st.title("🎮 Game Glitch Investigator")
@@ -42,12 +59,17 @@ if "status" not in st.session_state:
 if "history" not in st.session_state:
     st.session_state.history = []
 
-st.subheader("Make a guess")
+# ── Status bar ──────────────────────────────────────────────────────────────
+attempts_left = attempt_limit - st.session_state.attempts
+m1, m2, m3 = st.columns(3)
+m1.metric("Score", st.session_state.score)
+m2.metric("Attempts Left", attempts_left)
+m3.metric("Difficulty", difficulty)
 
-st.info(
-    f"Guess a number between {low} and {high}. "
-    f"Attempts left: {attempt_limit - st.session_state.attempts}"
-)
+st.divider()
+
+st.subheader("Make a guess")
+st.info(f"Guess a number between **{low}** and **{high}**.")
 
 with st.expander("Developer Debug Info"):
     st.write("Secret:", st.session_state.secret)
@@ -85,27 +107,31 @@ if st.session_state.status != "playing":
         st.error("Game over. Start a new game to try again.")
     st.stop()
 
-hint_messages = {
-    "Too High": "📉 Go LOWER!",
-    "Too Low": "📈 Go HIGHER!",
-    "Win": "🎉 Correct!",
-}
-
 if submit:
     st.session_state.attempts += 1
 
     ok, guess_int, err = parse_guess(raw_guess)
 
     if not ok:
-        st.session_state.history.append(raw_guess)
-        st.error(err)
+        st.error(f"⚠️ {err}")
     else:
-        st.session_state.history.append(guess_int)
-
         outcome = check_guess(guess_int, st.session_state.secret)
+        hot_cold = get_hot_cold(guess_int, st.session_state.secret, low, high) if outcome != "Win" else ""
+
+        # Store rich history entry
+        st.session_state.history.append({
+            "guess": guess_int,
+            "outcome": outcome,
+            "hot_cold": hot_cold,
+        })
 
         if show_hint:
-            st.warning(hint_messages[outcome])
+            if outcome == "Win":
+                st.success("🎉 Correct!")
+            elif outcome == "Too High":
+                st.error(f"📉 Too High! Go LOWER!   {hot_cold}")
+            else:
+                st.warning(f"📈 Too Low! Go HIGHER!   {hot_cold}")
 
         st.session_state.score = update_score(
             current_score=st.session_state.score,
@@ -117,17 +143,35 @@ if submit:
             st.balloons()
             st.session_state.status = "won"
             st.success(
-                f"You won! The secret was {st.session_state.secret}. "
-                f"Final score: {st.session_state.score}"
+                f"🏆 You won in {st.session_state.attempts} attempt(s)! "
+                f"The secret was **{st.session_state.secret}**. "
+                f"Final score: **{st.session_state.score}**"
             )
-        else:
-            if st.session_state.attempts >= attempt_limit:
-                st.session_state.status = "lost"
-                st.error(
-                    f"Out of attempts! "
-                    f"The secret was {st.session_state.secret}. "
-                    f"Score: {st.session_state.score}"
-                )
+        elif st.session_state.attempts >= attempt_limit:
+            st.session_state.status = "lost"
+            st.error(
+                f"💀 Out of attempts! "
+                f"The secret was **{st.session_state.secret}**. "
+                f"Score: **{st.session_state.score}**"
+            )
+
+# ── Session summary table ────────────────────────────────────────────────────
+valid_history = [h for h in st.session_state.history if isinstance(h, dict)]
+if valid_history:
+    st.divider()
+    st.subheader("📋 Guess History")
+
+    outcome_icon = {"Win": "✅", "Too High": "🔴", "Too Low": "🟡"}
+    rows = []
+    for i, entry in enumerate(valid_history, start=1):
+        rows.append({
+            "#": i,
+            "Guess": entry["guess"],
+            "Result": f"{outcome_icon.get(entry['outcome'], '')} {entry['outcome']}",
+            "Temperature": entry["hot_cold"],
+        })
+
+    st.table(rows)
 
 st.divider()
 st.caption("Built by an AI that claims this code is production-ready.")
