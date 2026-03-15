@@ -31,4 +31,4 @@ It wrote the code, ran away, and now the game is unplayable.
 
 ## 📸 Demo & Stretch Features (Enhanced UI)
 
-- [x] [game-glitch.jpg]
+- [x] ![Game Glitch Investigator Screenshot](game-glitch.jpg)
