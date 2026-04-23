@@ -213,17 +213,19 @@ if st.session_state.ai_hint_text:
     # ── Observable intermediate steps (Agentic Workflow stretch feature) ─────
     if st.session_state.ai_hint_trace:
         _TOOL_LABELS = {
+            "rag_retrieval":         ("📚", "RAG Retrieval"),
             "calculate_valid_range": ("📐", "Valid Range"),
             "evaluate_strategy":     ("📊", "Strategy Score"),
             "get_hint_intensity":    ("🎚️",  "Hint Intensity"),
         }
         _KEY_FIELDS = {
+            "rag_retrieval":         ["query", "docs_retrieved", "top_topic", "top_score"],
             "calculate_valid_range": ["low", "high", "remaining_count", "optimal_next_guess"],
             "evaluate_strategy":     ["strategy", "efficiency_score", "advice"],
             "get_hint_intensity":    ["intensity", "attempts_remaining"],
         }
         with st.expander(
-            f"🔍 Agent reasoning — {len(st.session_state.ai_hint_trace)} tool calls",
+            f"🔍 Agent reasoning — {len(st.session_state.ai_hint_trace)} steps",
             expanded=False,
         ):
             for step in st.session_state.ai_hint_trace:

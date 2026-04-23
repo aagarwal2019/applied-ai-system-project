@@ -22,6 +22,7 @@ from dotenv import load_dotenv
 
 from ai_agent import calculate_valid_range, evaluate_strategy, get_hint_intensity
 from logic_utils import check_guess, get_range_for_difficulty, parse_guess, update_score
+from rag import build_query, retrieve
 
 load_dotenv()
 
@@ -290,6 +291,59 @@ AGENT_TOOL_CASES = [
 # Optional: end-to-end API test
 # ─────────────────────────────────────────────────────────────────────────────
 
+RAG_RETRIEVAL_CASES = [
+    Case(
+        name="build_query returns non-empty string",
+        description="build_query('random', 'strong', 45) → a non-empty string",
+        fn=build_query,
+        args=("random", "strong", 45),
+        expect=lambda r: isinstance(r, str) and len(r) > 0,
+    ),
+    Case(
+        name="retrieve returns list with required keys",
+        description="retrieve('binary search midpoint', top_k=2) → 2 dicts each with id, topic, content, score",
+        fn=retrieve,
+        args=("binary search midpoint",),
+        expect=lambda r: (
+            isinstance(r, list)
+            and len(r) == 2
+            and all("id" in d and "topic" in d and "content" in d and "score" in d for d in r)
+        ),
+    ),
+    Case(
+        name="random strategy query surfaces pitfall document",
+        description="Query for random+strong should retrieve random_guessing or edge_guessing or strong_hint topic",
+        fn=lambda: retrieve(build_query("random", "strong", 45), top_k=2),
+        args=(),
+        expect=lambda r: any(
+            "random" in d["topic"] or "pitfall" in d["topic"] or "strong" in d["topic"] or "edge" in d["topic"]
+            for d in r
+        ),
+    ),
+    Case(
+        name="binary_search query surfaces binary_search or range document",
+        description="Query for binary_search+gentle should retrieve a binary_search or range-related tip",
+        fn=lambda: retrieve(build_query("binary_search", "gentle", 50), top_k=2),
+        expect=lambda r: any(
+            "binary_search" in d["topic"] or "range" in d["topic"] or "gentle" in d["topic"]
+            for d in r
+        ),
+        args=(),
+    ),
+    Case(
+        name="cosine similarity scores are in [0.0, 1.0]",
+        description="All retrieved scores must be valid cosine similarities",
+        fn=retrieve,
+        args=("midpoint range narrowing optimal",),
+        expect=lambda r: len(r) > 0 and all(0.0 <= d["score"] <= 1.0 for d in r),
+    ),
+]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Optional: end-to-end API tests
+# ─────────────────────────────────────────────────────────────────────────────
+
 def run_api_test() -> Result:
     """
     Calls the live Anthropic API (standard mode) with a realistic mid-game state
@@ -413,6 +467,10 @@ def main():
     p, t = print_section("AGENT TOOLS  (calculate_valid_range · evaluate_strategy · get_hint_intensity)", at_results)
     all_passed += p; all_total += t
 
+    rag_results = run(RAG_RETRIEVAL_CASES)
+    p, t = print_section("RAG RETRIEVAL  (build_query · retrieve · TF-IDF cosine similarity)", rag_results)
+    all_passed += p; all_total += t
+
     # ── Optional API tests ───────────────────────────────────────────────────
     api_result = None
     spec_results = []
@@ -476,7 +534,7 @@ def main():
         print("  • Agent tools narrow ranges, score strategies, and calibrate")
         print("    hint intensity correctly across all tested scenarios.")
         if api_result and api_result.passed:
-            print("  • Full agentic loop returned a usable hint + 3-tool trace from the live API.")
+            print("  • Full agentic loop returned a usable hint + 4-step trace from the live API.")
         elif api_result and not api_result.passed:
             print("  • ⚠️  API round-trip failed — check your API key and network.")
         if spec_results and all(r.passed for r in spec_results):
@@ -490,7 +548,7 @@ def main():
     print()
     print("  Limitations not covered by this script:")
     print("  • The agentic loop synthesis step (requires a live API call).")
-    print("  • Hint quality (requires human evaluation of Claude's output).")
+    print("  • Hint quality and RAG impact on output (requires human evaluation).")
     print("  • UI rendering and Streamlit session state behaviour.")
     print("═" * width)
     print()

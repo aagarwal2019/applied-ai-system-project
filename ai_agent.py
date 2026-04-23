@@ -22,6 +22,13 @@ from typing import Optional
 
 import anthropic
 
+try:
+    import rag as _rag
+    _RAG_AVAILABLE = True
+except ImportError:
+    _RAG_AVAILABLE = False
+    logging.getLogger(__name__).warning("rag module not importable — RAG pre-retrieval disabled")
+
 # ---------------------------------------------------------------------------
 # Logging setup
 # ---------------------------------------------------------------------------
@@ -363,6 +370,52 @@ def get_ai_hint(
 
     trace: list = []
 
+    # ── RAG pre-retrieval ─────────────────────────────────────────────────────
+    # Pre-run the three tool functions as pure Python (no API call) to build a
+    # retrieval query from the current game state, then inject the top-2 matching
+    # strategy tips into the user message before the agentic loop begins.
+    # Wrapped in try/except so a RAG failure never blocks the hint.
+    rag_injected = ""
+    if _RAG_AVAILABLE:
+        try:
+            _range_info    = calculate_valid_range(history, min_val, max_val)
+            _strategy_info = evaluate_strategy(history, min_val, max_val)
+            _intensity_info = get_hint_intensity(attempt_number, max_attempts)
+
+            _query = _rag.build_query(
+                strategy=_strategy_info["strategy"],
+                intensity=_intensity_info["intensity"],
+                remaining_count=_range_info["remaining_count"],
+            )
+            _tips = _rag.retrieve(_query, top_k=2)
+
+            if _tips:
+                tip_lines = "\n".join(
+                    f"  [{i + 1}] ({tip['topic']}) {tip['content']}"
+                    for i, tip in enumerate(_tips)
+                )
+                rag_injected = (
+                    f"\n\nRelevant strategy context retrieved from knowledge base:\n{tip_lines}"
+                )
+
+            trace.append({
+                "tool": "rag_retrieval",
+                "result": {
+                    "query":         _query,
+                    "docs_retrieved": len(_tips),
+                    "top_topic":     _tips[0]["topic"] if _tips else "none",
+                    "top_score":     _tips[0]["score"] if _tips else 0.0,
+                    "injected":      bool(_tips),
+                },
+            })
+            logger.info(
+                "RAG: injected %d tips | top_topic=%s | query=%r",
+                len(_tips), _tips[0]["topic"] if _tips else "none", _query[:60],
+            )
+        except Exception as exc:
+            logger.error("RAG pre-retrieval failed (hints still work): %s", exc)
+    # ── end RAG block ─────────────────────────────────────────────────────────
+
     # Build client — prefer explicit key, then env var (loaded by dotenv in app.py)
     try:
         client = anthropic.Anthropic(api_key=api_key or os.environ.get("ANTHROPIC_API_KEY"))
@@ -378,6 +431,7 @@ def get_ai_hint(
         f"- Attempts used: {attempt_number} of {max_attempts}\n"
         f"- Guess history: {json.dumps(history)}\n\n"
         "Use your tools to analyse my situation, then provide a strategic hint."
+        f"{rag_injected}"
     )
 
     messages = [{"role": "user", "content": user_content}]

@@ -1,0 +1,92 @@
+[
+  {
+    "id": "tip_001",
+    "topic": "binary_search_basics",
+    "tags": ["binary_search", "strategy", "midpoint", "optimal"],
+    "content": "Binary search is the optimal strategy for number guessing. Always guess the midpoint of the remaining valid range. Each guess at the midpoint halves the remaining possibilities, guaranteeing you find the answer in at most log2(N) guesses. For a range of 100 numbers this means at most 7 guesses."
+  },
+  {
+    "id": "tip_002",
+    "topic": "binary_search_advanced",
+    "tags": ["binary_search", "invariant", "convergence", "mathematical"],
+    "content": "The mathematical invariant of binary search is that after every guess the secret number lies within the remaining valid range. This convergence guarantee means the algorithm cannot fail as long as you maintain the invariant: always guess strictly within the current bounds. Worst-case proof: ceil(log2(range_size)) guesses suffice."
+  },
+  {
+    "id": "tip_003",
+    "topic": "random_guessing_pitfalls",
+    "tags": ["random", "inefficient", "pitfall", "arbitrary"],
+    "content": "Random guessing is the worst strategy. Arbitrary guesses do not build on previous information. Even if your luck holds for a few rounds, you will eventually waste attempts by guessing numbers already ruled out. Luck-based play can require up to N guesses for a range of N numbers — far worse than binary search."
+  },
+  {
+    "id": "tip_004",
+    "topic": "edge_guessing_pitfalls",
+    "tags": ["edge", "boundary", "extremes", "asymmetric", "pitfall"],
+    "content": "Guessing at the edges of the range — near the minimum or maximum boundary — is asymmetric and inefficient. An edge guess only eliminates a small portion of possibilities even when correct. Extremes should only be targeted when the remaining range is very narrow or when you have specific information pointing there."
+  },
+  {
+    "id": "tip_005",
+    "topic": "range_narrowing",
+    "tags": ["range", "bounds", "constraint", "eliminate", "narrowing"],
+    "content": "Every Too High or Too Low outcome gives you a hard constraint on the valid range. Too High means the secret is strictly below your guess; Too Low means it is strictly above. Maintaining tight bounds and always guessing within those contiguous bounds is essential. Never guess outside the constrained range — it wastes the attempt entirely."
+  },
+  {
+    "id": "tip_006",
+    "topic": "midpoint_calculation",
+    "tags": ["midpoint", "formula", "calculation", "arithmetic", "integer"],
+    "content": "The optimal midpoint formula is: guess = (low + high) // 2, using integer floor division. For example, if your range is 51 to 74, the arithmetic mean is 62.5, so your optimal guess is 62. This integer midpoint minimises the maximum number of remaining candidates in either branch, regardless of whether the result is Too High or Too Low."
+  },
+  {
+    "id": "tip_007",
+    "topic": "gentle_hint_strategy",
+    "tags": ["gentle", "early_game", "exploration", "patience"],
+    "content": "In the early game there is no urgency. Use these attempts to familiarise yourself with the range and establish good habits. Focus on exploration and patience rather than speed. An early gentle nudge toward the midpoint will pay off in saved attempts later. There is plenty of time to correct course."
+  },
+  {
+    "id": "tip_008",
+    "topic": "moderate_hint_strategy",
+    "tags": ["moderate", "midgame", "systematic", "calibrate", "remaining"],
+    "content": "In the midgame you should be systematic. Calibrate each guess to the remaining valid range — not the original range. The goal is to halve the remaining candidates with every move. If your guesses so far have not been well-centered, now is the time to correct course and become more precise before attempts run low."
+  },
+  {
+    "id": "tip_009",
+    "topic": "strong_hint_strategy",
+    "tags": ["strong", "urgent", "critical", "final", "direct"],
+    "content": "With very few attempts remaining the situation is critical and urgent. This is not the time for cautious exploration. You need a direct, precise guess at the exact midpoint of whatever range is still valid. Every remaining attempt is precious. A single poor guess now could end the game before you find the answer."
+  },
+  {
+    "id": "tip_010",
+    "topic": "attempt_conservation",
+    "tags": ["attempts", "budget", "conservation", "economise", "efficiency"],
+    "content": "Treat your guesses as a finite budget. Each wasted attempt — one that does not target the midpoint — is a squandered resource you cannot recover. Economise from the very first guess. Players who conserve attempts early have flexibility later; players who squander them on arbitrary guesses are forced into desperate final guesses."
+  },
+  {
+    "id": "tip_011",
+    "topic": "pattern_recognition",
+    "tags": ["pattern", "bias", "tendency", "clustering", "history"],
+    "content": "Review your guess history for patterns. If your guesses cluster near the lower end of the range or show a repeated upward bias, you are drifting from optimal play. A tendency to anchor near your first guess is a common cognitive trap. Use the history to identify and correct your bias before it costs you the game."
+  },
+  {
+    "id": "tip_012",
+    "topic": "psychological_guessing",
+    "tags": ["psychology", "intuition", "anchoring", "cognitive", "superstition"],
+    "content": "Intuition and superstition are poor guides in a random number game. Anchoring on a lucky number or trusting a gut feeling ignores the information already given to you. Cognitive biases like the gambler's fallacy — believing a number is overdue — do not apply to independent uniform random draws. Suppress intuition and follow the math."
+  },
+  {
+    "id": "tip_013",
+    "topic": "small_range_tactics",
+    "tags": ["small_range", "narrow", "enumerate", "linear", "trivial"],
+    "content": "When the remaining range narrows to 10 or fewer numbers, binary search and linear enumeration produce nearly identical outcomes. The range is so narrow that even a non-optimal guess will resolve the game within two or three more attempts. At this point focus on staying within the valid bounds rather than perfecting the midpoint calculation."
+  },
+  {
+    "id": "tip_014",
+    "topic": "large_range_tactics",
+    "tags": ["large_range", "scale", "magnitude", "logarithm", "vast"],
+    "content": "On large ranges the logarithmic advantage of binary search becomes dramatic. A range of 200 numbers requires at most 8 optimal guesses but could take up to 200 random guesses. The vast magnitude of this difference means that on Hard difficulty — range 1 to 200 — disciplined midpoint guessing is not just helpful, it is essential to winning within the attempt limit."
+  },
+  {
+    "id": "tip_015",
+    "topic": "recovery_strategy",
+    "tags": ["recovery", "reset", "discipline", "correct_course", "restart"],
+    "content": "If you have been guessing poorly, the best move is to mentally reset and restart correct binary search from the current valid range. Do not try to recover wasted attempts — they are gone. Apply strict discipline to every remaining guess: calculate the exact midpoint of the current low and high bounds, and guess that number. Recovery requires commitment to the method."
+  }
+]

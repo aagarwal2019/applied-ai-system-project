@@ -66,7 +66,14 @@ flowchart TD
     Logger["📋  Python Logger\n(logging module)"]
 
     subgraph TestSuite["🧪  Reliability  ·  tests/test_game_logic.py"]
-        Tests["29 Unit Tests · pytest\nValidation · game logic · agent tools"]
+        Tests["29 Unit Tests · pytest\nValidation · game logic · agent tools · RAG"]
+    end
+
+    subgraph RAGPipeline["📚  RAG Pipeline  ·  rag.py"]
+        KBFile[("knowledge_base/\nstrategy_tips.json\n15 documents")]
+        TFIDF["TF-IDF Vectorizer\n(module-level cache)"]
+        BuildQ["build_query()\nstrategy + intensity\n+ range → query"]
+        Retrieve["retrieve()\ncosine similarity\ntop-2 tips"]
     end
 
     Player -->|"enters guess"| GInput
@@ -79,7 +86,12 @@ flowchart TD
     Display -->|"feedback"| Player
 
     Player -->|"clicks AI Hint"| HintBtn
-    HintBtn --> Loop
+    HintBtn --> BuildQ
+    KBFile --> TFIDF
+    TFIDF --> Retrieve
+    BuildQ --> Retrieve
+    Retrieve -->|"top-2 tips injected\ninto user message"| Loop
+    Retrieve -.->|"rag_retrieval\ntrace entry"| Display
     Loop <-->|"tool_use / tool_result messages"| Claude
     Claude -->|"calls"| T1
     Claude -->|"calls"| T2
@@ -95,13 +107,71 @@ flowchart TD
     Tests -->|"validates"| T1
     Tests -->|"validates"| T2
     Tests -->|"validates"| T3
+    Tests -->|"validates"| BuildQ
+    Tests -->|"validates"| Retrieve
 ```
 
-The system has two main data flows. The **guess flow** (left path) runs entirely in Python
-with no API calls — the player's input is validated, compared to the secret, scored, and
-stored in Streamlit session state. The **hint flow** (right path) sends the current game
-state to the AI agent, which runs a tool-call loop with Claude before returning a text hint
-to the same display. A test suite validates every pure-Python component in both paths.
+The system has three cooperating components. The **guess flow** validates input, checks
+the guess, scores it, and stores everything in Streamlit session state — no API calls.
+The **RAG pipeline** runs before each hint request: it pre-computes the game state using
+pure-Python tool functions, builds a retrieval query, and fetches the two most relevant
+strategy tip documents from a local TF-IDF index. Those tips are injected into the user
+message. The **agentic loop** then sends that augmented message to Claude Haiku, which
+calls the three tools, reasons over the results alongside the retrieved tips, and writes
+a personalised hint. Every pure-Python step in all three components is covered by tests.
+
+---
+
+## RAG Component
+
+When a player clicks **AI Hint**, a retrieval step runs before any API call is made.
+
+**How retrieval works**
+
+The three agent tool functions are called directly as pure Python to get the current
+strategy label, hint intensity, and remaining range size. `build_query()` in `rag.py`
+maps these discrete values to a natural-language query string. `retrieve()` transforms
+that query with a module-level cached TF-IDF vectorizer (fitted once at import time over
+the 15 documents in `knowledge_base/strategy_tips.json`), computes cosine similarity
+against every document, and returns the top-2 matches.
+
+**What gets injected**
+
+The retrieved tips are appended to the user message that goes to Claude:
+
+```
+Relevant strategy context retrieved from knowledge base:
+  [1] (random_guessing_pitfalls) Random guessing is the worst strategy...
+  [2] (strong_hint_strategy) With very few attempts remaining the situation is critical...
+```
+
+Claude sees both the game state and the retrieved tips before it calls any tools.
+
+**Observable in the UI**
+
+The RAG step appears first in the "Agent reasoning" expander as a `📚 RAG Retrieval`
+entry showing the query string, how many documents were retrieved, the top topic matched,
+and its similarity score.
+
+**Knowledge base**
+
+`knowledge_base/strategy_tips.json` — 15 documents, each with `id`, `topic`, `tags`,
+and `content` fields. Tags are included in the TF-IDF corpus so short keywords like
+`"urgent"` and `"binary_search"` participate in scoring alongside sentence content.
+
+| Topic cluster | Documents |
+|---|---|
+| Binary search | `binary_search_basics`, `binary_search_advanced` |
+| Pitfalls | `random_guessing_pitfalls`, `edge_guessing_pitfalls`, `psychological_guessing` |
+| Range tactics | `range_narrowing`, `midpoint_calculation`, `small_range_tactics`, `large_range_tactics` |
+| Intensity-matched | `gentle_hint_strategy`, `moderate_hint_strategy`, `strong_hint_strategy` |
+| Meta-strategy | `attempt_conservation`, `pattern_recognition`, `recovery_strategy` |
+
+**Failure isolation**
+
+If `scikit-learn` is unavailable or the knowledge base file is missing, RAG is silently
+disabled. The hint request continues without retrieved context and Claude still produces
+a valid hint from the tool results alone.
 
 ---
 
