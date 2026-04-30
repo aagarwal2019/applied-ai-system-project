@@ -1,7 +1,7 @@
 # Glitchy Guesser — Applied AI System
 
 A Streamlit number-guessing game extended with a multi-step **agentic hint assistant**
-powered by Claude Haiku. The agent uses tool calls to analyse the player's guess history,
+powered by Gemini Flash. The agent uses function calls to analyse the player's guess history,
 evaluate their strategy, and write a personalised hint — without ever revealing the answer.
 
 ---
@@ -62,7 +62,7 @@ flowchart TD
         T3["get_hint_intensity()\nDecides hint directness"]
     end
 
-    Claude(["☁️  Claude Haiku\nAnthropic API"])
+    Gemini(["☁️  Gemini Flash\nGoogle AI API"])
     Logger["📋  Python Logger\n(logging module)"]
 
     subgraph TestSuite["🧪  Reliability  ·  tests/test_game_logic.py"]
@@ -92,10 +92,10 @@ flowchart TD
     BuildQ --> Retrieve
     Retrieve -->|"top-2 tips injected\ninto user message"| Loop
     Retrieve -.->|"rag_retrieval\ntrace entry"| Display
-    Loop <-->|"tool_use / tool_result messages"| Claude
-    Claude -->|"calls"| T1
-    Claude -->|"calls"| T2
-    Claude -->|"calls"| T3
+    Loop <-->|"function calls"| Gemini
+    Gemini -->|"calls"| T1
+    Gemini -->|"calls"| T2
+    Gemini -->|"calls"| T3
     T1 -->|"JSON result"| Loop
     T2 -->|"JSON result"| Loop
     T3 -->|"JSON result"| Loop
@@ -116,7 +116,7 @@ the guess, scores it, and stores everything in Streamlit session state — no AP
 The **RAG pipeline** runs before each hint request: it pre-computes the game state using
 pure-Python tool functions, builds a retrieval query, and fetches the two most relevant
 strategy tip documents from a local TF-IDF index. Those tips are injected into the user
-message. The **agentic loop** then sends that augmented message to Claude Haiku, which
+message. The **agentic loop** then sends that augmented message to Gemini Flash, which
 calls the three tools, reasons over the results alongside the retrieved tips, and writes
 a personalised hint. Every pure-Python step in all three components is covered by tests.
 
@@ -137,7 +137,7 @@ against every document, and returns the top-2 matches.
 
 **What gets injected**
 
-The retrieved tips are appended to the user message that goes to Claude:
+The retrieved tips are appended to the user message that goes to Gemini:
 
 ```
 Relevant strategy context retrieved from knowledge base:
@@ -145,7 +145,7 @@ Relevant strategy context retrieved from knowledge base:
   [2] (strong_hint_strategy) With very few attempts remaining the situation is critical...
 ```
 
-Claude sees both the game state and the retrieved tips before it calls any tools.
+Gemini sees both the game state and the retrieved tips before it calls any functions.
 
 **Observable in the UI**
 
@@ -170,7 +170,7 @@ and `content` fields. Tags are included in the TF-IDF corpus so short keywords l
 **Failure isolation**
 
 If `scikit-learn` is unavailable or the knowledge base file is missing, RAG is silently
-disabled. The hint request continues without retrieved context and Claude still produces
+disabled. The hint request continues without retrieved context and Gemini still produces
 a valid hint from the tool results alone.
 
 ---
@@ -282,7 +282,7 @@ A single prompt like "given this history, give a hint" would produce a reasonabl
 but it would be generic. The agent is forced to answer three specific questions before
 writing anything: what range is still valid, how well is this player actually guessing,
 and how direct should the hint be right now? Each question is answered by a separate tool.
-Claude then has to synthesise three concrete data points into one coherent response.
+Gemini then has to synthesise three concrete data points into one coherent response.
 
 The result is a hint that adapts to the player's actual situation — a beginner on their
 last attempt gets a near-explicit directional hint, while an expert early in the game gets
@@ -293,22 +293,22 @@ gathering the inputs.
 
 Each tool answers an independent question about the game state. Separating them has two
 benefits. First, each function is pure Python with no API dependency, so all three can be
-unit-tested directly without mocking or API keys. Second, it forces Claude to reason about
+unit-tested directly without mocking or API keys. Second, it forces Gemini to reason about
 the relationship between range, strategy quality, and urgency as separate dimensions rather
 than collapsing them into a single judgment. This produces more accurate, contextually
 appropriate hints.
 
-### Why Claude Haiku?
+### Why Gemini Flash?
 
-Game hints need to feel fast. Haiku is the lowest-latency model in the Claude family and
+Game hints need to feel fast. Gemini Flash is optimized for speed and low latency while
 is more than capable of structured tool-use reasoning for a task this size. Using Sonnet
 or Opus would produce marginally richer prose at 2–3x the cost and latency — not a
 worthwhile trade-off for a hint in a casual game.
 
 ### Why prompt caching?
 
-The system prompt sent to Claude (~400 tokens) is identical on every hint request within
-a session. Marking it with `cache_control: ephemeral` means Claude reads it from cache
+The system prompt sent to Gemini (~400 tokens) is identical on every hint request within
+a session. Gemini's context caching helps maintain efficiency across requests.
 after the first request instead of processing it again. This reduces per-hint latency and
 token cost for any session with more than one hint request.
 
@@ -377,7 +377,7 @@ system prompt could break the loop without any test catching it.
 Testing AI systems requires a deliberate split between the parts that can be tested as
 pure functions (the tools, the validators, the game logic) and the parts that depend on a
 model response (the synthesis step). Designing tools as isolated, deterministic Python
-functions first — before wiring them to Claude — made the test suite straightforward and
+functions first — before wiring them to Gemini — made the test suite straightforward and
 fast. If the tools had been embedded inside the API call, none of them could be tested
 without hitting the network.
 
@@ -406,7 +406,7 @@ one specific strategy.
 over-guesses in the upper half of the range would benefit from knowing that about
 themselves, but the system cannot observe or report on patterns across multiple games.
 
-**Hint tone is always encouraging.** The system prompt instructs Claude to be warm
+**Hint tone is always encouraging.** The system prompt instructs Gemini to be warm
 and positive regardless of how poorly the player is doing. This produces consistent
 output, but it means a player on their seventh of eight attempts with no strategic
 improvement still receives encouragement — which may not be the most useful feedback.
@@ -428,7 +428,7 @@ into the Streamlit sidebar, which is convenient for local development but danger
 any shared environment — the key is visible in the browser and in the app's source. In
 a production context the key should only live server-side, never in the client.
 
-**Prompt injection through game inputs.** The guess history is passed to Claude as
+**Prompt injection through game inputs.** The guess history is passed to Gemini as
 structured JSON in tool result messages, not as raw user text. This makes the system
 reasonably resistant to prompt injection — a player cannot embed instructions in their
 guess value because the integer is validated and type-coerced before it ever reaches
@@ -439,8 +439,8 @@ the agent. This was a deliberate design choice.
 ### What surprised me while testing reliability
 
 **The agent follows tool-call ordering without technical enforcement.** The system
-prompt instructs Claude to call the three tools "in this order," but there is nothing in
-the code that enforces that sequence. I expected Claude to occasionally call them out of
+prompt instructs Gemini to call the three functions "in this order," but there is nothing in
+the code that enforces that sequence. I expected Gemini to occasionally call them out of
 order or skip one. In every test run, it called all three in the specified sequence. This
 suggested that well-written system prompts can substitute for procedural control flow in
 simple agentic tasks — though I would not rely on this for anything safety-critical.

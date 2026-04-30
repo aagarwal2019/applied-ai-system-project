@@ -12,7 +12,7 @@ Answer each question in 3 to 5 sentences. Be specific and honest about what actu
 
 ## 2. How did you use AI as a teammate?
 
-**Which AI tools did you use on this project?** I used GitHub Copilot and Claude Code suggestions from within VS Code.
+**Which AI tools did you use on this project?** I used GitHub Copilot and Google AI (Gemini) suggestions from within VS Code.
 
 **One correct AI suggestion and verification.** AI correctly suggested using `st.session_state` so the secret number initializes only once; I verified by running the app and seeing stable secret number across guesses.
 

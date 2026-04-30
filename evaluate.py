@@ -5,7 +5,7 @@ Runs predefined test cases against every component and prints a structured
 pass/fail report. The core evaluation requires no API key — all agent tool
 functions are pure Python and tested directly.
 
-An optional end-to-end hint test (--api flag) calls the live Anthropic API
+An optional end-to-end hint test (--api flag) calls the live Google AI API
 to verify that the full agentic loop returns a usable hint string.
 
 Usage:
@@ -346,7 +346,7 @@ RAG_RETRIEVAL_CASES = [
 
 def run_api_test() -> Result:
     """
-    Calls the live Anthropic API (standard mode) with a realistic mid-game state
+    Calls the live Google AI API (standard mode) with a realistic mid-game state
     and checks that a usable hint string comes back along with a non-empty trace.
     """
     from ai_agent import get_ai_hint
@@ -476,14 +476,14 @@ def main():
     spec_results = []
 
     if run_api:
-        key = os.environ.get("ANTHROPIC_API_KEY", "")
+        key = os.environ.get("GOOGLE_API_KEY", "")
         if not key:
             print("\n  END-TO-END & SPECIALISATION TESTS")
             print(f"  {'─' * 56}")
-            print("    ⚠️  Skipped — ANTHROPIC_API_KEY not set.")
+            print("    ⚠️  Skipped — GOOGLE_API_KEY not set.")
             print("       Set the key in .env or your environment and re-run with --api.")
         else:
-            print("\n  END-TO-END API TEST  (live Anthropic API — standard mode)")
+            print("\n  END-TO-END API TEST  (live Google AI API — standard mode)")
             print(f"  {'─' * 56}")
             print("    Calling Claude Haiku with a sample game state…")
             api_result = run_api_test()

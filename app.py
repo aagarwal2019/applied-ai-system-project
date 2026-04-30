@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 from ai_agent import get_ai_hint
 from logic_utils import check_guess, get_range_for_difficulty, parse_guess, update_score
 
-# Load ANTHROPIC_API_KEY from a local .env file if present (no-op otherwise)
+# Load GOOGLE_API_KEY from a local .env file if present (no-op otherwise)
 load_dotenv()
 
 # ---------------------------------------------------------------------------
@@ -75,10 +75,10 @@ st.sidebar.caption(f"Attempts allowed: {attempt_limit}")
 # AI hint API key — prefer env var, allow sidebar override
 with st.sidebar.expander("AI Hint Settings"):
     sidebar_api_key = st.text_input(
-        "Anthropic API Key",
+        "Google AI API Key",
         type="password",
-        placeholder="Uses ANTHROPIC_API_KEY env var if blank",
-        help="Required for AI Hints. Leave blank if ANTHROPIC_API_KEY is set in your environment or .env file.",
+        placeholder="Uses GOOGLE_API_KEY env var if blank",
+        help="Required for AI Hints. Leave blank if GOOGLE_API_KEY is set in your environment or .env file.",
     )
     coaching_mode = st.toggle(
         "Coaching Mode",
@@ -91,7 +91,7 @@ with st.sidebar.expander("AI Hint Settings"):
     )
 
 # Resolve the key: sidebar input wins; fall back to environment
-api_key = sidebar_api_key.strip() or os.environ.get("ANTHROPIC_API_KEY", "")
+api_key = sidebar_api_key.strip() or os.environ.get("GOOGLE_API_KEY", "")
 
 # ---------------------------------------------------------------------------
 # Session state initialisation
@@ -163,7 +163,7 @@ with col3:
         help=(
             "Make at least one guess first, then click for a strategic AI hint."
             if api_key
-            else "Add an Anthropic API key in the sidebar to enable AI hints."
+            else "Add a Google AI API key in the sidebar to enable AI hints."
         ),
     )
 
@@ -229,7 +229,7 @@ if st.session_state.ai_hint_text:
             expanded=False,
         ):
             for step in st.session_state.ai_hint_trace:
-                tool = step["tool"]
+                tool = step["function"]
                 result = step["result"]
                 icon, title = _TOOL_LABELS.get(tool, ("🔧", tool))
                 st.markdown(f"**{icon} {title}** (`{tool}`)")

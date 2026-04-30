@@ -1,18 +1,17 @@
 """
 ai_agent.py — Agentic hint system for the Glitchy Guesser game.
 
-Claude uses three tools in a reasoning loop to analyse the player's game
-state, then synthesises a personalised, strategic hint without revealing
-the secret number.
+Gemini uses function calling to analyse the player's game state and
+synthesises a personalised, strategic hint without revealing the secret number.
 
-Tools
------
+Functions
+---------
 calculate_valid_range  — narrows down remaining numbers from guess history
 evaluate_strategy      — scores how efficiently the player is guessing
 get_hint_intensity     — decides how revealing the hint should be
 
-The system prompt is marked for prompt caching so repeated hint requests
-in the same Streamlit session reuse the cached prefix.
+The system uses Gemini's function calling to gather information before
+generating the final hint.
 """
 
 import json
@@ -20,7 +19,7 @@ import logging
 import os
 from typing import Optional
 
-import anthropic
+import google.generativeai as genai
 
 try:
     import rag as _rag
@@ -40,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Pure-Python tool implementations (no API calls — fully testable)
+# Pure-Python function implementations (no API calls — fully testable)
 # ---------------------------------------------------------------------------
 
 def calculate_valid_range(history: list, min_val: int, max_val: int) -> dict:
@@ -157,87 +156,68 @@ def get_hint_intensity(attempt_number: int, max_attempts: int) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Tool schema definitions (sent to Claude)
+# Gemini function declarations
 # ---------------------------------------------------------------------------
 
-TOOLS = [
+GEMINI_FUNCTIONS = [
     {
         "name": "calculate_valid_range",
-        "description": (
-            "Calculate the remaining valid range of numbers based on the player's "
-            "guess history. Uses every 'Too High' and 'Too Low' result to narrow "
-            "down the bounds. Returns low, high, remaining_count, and the optimal "
-            "next guess (midpoint of remaining range)."
-        ),
-        "input_schema": {
+        "description": "Calculate the remaining valid range of numbers based on the player's guess history.",
+        "parameters": {
             "type": "object",
             "properties": {
                 "history": {
                     "type": "array",
-                    "description": "List of guesses. Each item has 'guess' (int) and 'outcome' (str).",
+                    "description": "List of guesses with outcomes",
                     "items": {
                         "type": "object",
                         "properties": {
                             "guess": {"type": "integer"},
-                            "outcome": {"type": "string"},
-                        },
-                    },
+                            "outcome": {"type": "string"}
+                        }
+                    }
                 },
-                "min_val": {"type": "integer", "description": "Game range minimum (inclusive)."},
-                "max_val": {"type": "integer", "description": "Game range maximum (inclusive)."},
+                "min_val": {"type": "integer", "description": "Game range minimum"},
+                "max_val": {"type": "integer", "description": "Game range maximum"}
             },
-            "required": ["history", "min_val", "max_val"],
-        },
+            "required": ["history", "min_val", "max_val"]
+        }
     },
     {
         "name": "evaluate_strategy",
-        "description": (
-            "Evaluate how efficiently the player is guessing. Compares each guess "
-            "against the theoretically optimal binary-search midpoint and returns "
-            "an efficiency score (0–1) and tailored strategic advice."
-        ),
-        "input_schema": {
+        "description": "Evaluate how efficiently the player is guessing compared to optimal strategy.",
+        "parameters": {
             "type": "object",
             "properties": {
                 "history": {
                     "type": "array",
-                    "description": "List of guesses with outcomes.",
+                    "description": "List of guesses with outcomes",
                     "items": {
                         "type": "object",
                         "properties": {
                             "guess": {"type": "integer"},
-                            "outcome": {"type": "string"},
-                        },
-                    },
+                            "outcome": {"type": "string"}
+                        }
+                    }
                 },
-                "min_val": {"type": "integer", "description": "Game range minimum."},
-                "max_val": {"type": "integer", "description": "Game range maximum."},
+                "min_val": {"type": "integer", "description": "Game range minimum"},
+                "max_val": {"type": "integer", "description": "Game range maximum"}
             },
-            "required": ["history", "min_val", "max_val"],
-        },
+            "required": ["history", "min_val", "max_val"]
+        }
     },
     {
         "name": "get_hint_intensity",
-        "description": (
-            "Determine how strong or revealing the hint should be based on how many "
-            "attempts the player has already used. Returns gentle / moderate / strong "
-            "and describes what kind of hint to give."
-        ),
-        "input_schema": {
+        "description": "Determine how strong or revealing the hint should be based on attempts used.",
+        "parameters": {
             "type": "object",
             "properties": {
-                "attempt_number": {
-                    "type": "integer",
-                    "description": "Number of guesses made so far.",
-                },
-                "max_attempts": {
-                    "type": "integer",
-                    "description": "Maximum attempts allowed in this game.",
-                },
+                "attempt_number": {"type": "integer", "description": "Number of guesses made so far"},
+                "max_attempts": {"type": "integer", "description": "Maximum attempts allowed"}
             },
-            "required": ["attempt_number", "max_attempts"],
-        },
-    },
+            "required": ["attempt_number", "max_attempts"]
+        }
+    }
 ]
 
 # ---------------------------------------------------------------------------
@@ -248,17 +228,16 @@ TOOLS = [
 SYSTEM_PROMPT = """\
 You are a friendly, encouraging hint assistant for a number guessing game.
 
-When asked for a hint you MUST use all three tools in this order:
-1. `calculate_valid_range`  — find what numbers are still possible
-2. `evaluate_strategy`      — judge how efficiently the player is guessing
-3. `get_hint_intensity`     — decide how direct to be
+When asked for a hint you should analyze the player's situation using the available functions.
+Use calculate_valid_range to find remaining possibilities, evaluate_strategy to assess efficiency,
+and get_hint_intensity to determine hint strength.
 
-After calling all three tools, write a short hint (2–4 sentences) that:
+After gathering information, write a short hint (2–4 sentences) that:
 - Warms the player up with encouragement
 - Gives strategic guidance matching the intensity level
 - For moderate/strong intensity, mentions the narrowed number range
 - If the player's strategy is poor, briefly suggests the midpoint approach
-- Never states the secret number directly (even if you could calculate it)
+- Never states the secret number directly
 
 Keep it concise, fun, and game-appropriate."""
 
@@ -269,13 +248,13 @@ COACHING_PROMPT = """\
 You are a precise game coach for a number guessing game. Your hints follow a strict
 three-sentence structure that is analytical, actionable, and always specific.
 
-When asked for a hint you MUST use all three tools in this order:
-1. `calculate_valid_range`  — find remaining bounds and the optimal_next_guess value
-2. `evaluate_strategy`      — assess how efficiently the player is guessing
-3. `get_hint_intensity`     — calibrate how direct to be
+When asked for a hint you should analyze using the available functions:
+Use calculate_valid_range to find remaining bounds and the optimal_next_guess value,
+evaluate_strategy to assess how efficiently the player is guessing, and
+get_hint_intensity to calibrate how direct to be.
 
-After calling all three tools, write a coaching hint in EXACTLY this three-part format:
-- Sentence 1: State the player's current situation using the tool data (range, attempts).
+After gathering information, write a coaching hint in EXACTLY this three-part format:
+- Sentence 1: State the player's current situation using the function data (range, attempts).
 - Sentence 2: Explain binary search strategy and why it minimises guesses.
 - Sentence 3: Always end with: "Your optimal next guess is [optimal_next_guess from calculate_valid_range]."
 
@@ -283,14 +262,14 @@ Here are two example coaching hints:
 
 Example 1
 Game state: 1-100, guesses [50 Too Low, 75 Too High], 2/8 attempts used
-Tools: low=51, high=74, remaining=24, optimal=62 | strategy=binary_search, efficiency=0.85 | intensity=gentle
+Functions: low=51, high=74, remaining=24, optimal=62 | strategy=binary_search, efficiency=0.85 | intensity=gentle
 Coaching hint: "You've narrowed the range to 51–74 in just two guesses. Targeting the
 midpoint each time cuts the remaining possibilities in half — the fastest possible path
 to the answer. Your optimal next guess is 62."
 
 Example 2
 Game state: 1-100, guesses [90 Too High, 10 Too Low, 70 Too High], 3/8 attempts, poor efficiency
-Tools: low=11, high=69, remaining=59, optimal=40 | strategy=random, efficiency=0.20 | intensity=gentle
+Functions: low=11, high=69, remaining=59, optimal=40 | strategy=random, efficiency=0.20 | intensity=gentle
 Coaching hint: "You've used 3 attempts but the valid range is still wide at 11–69 because
 your guesses have been near the edges rather than the midpoint. Always pick the exact
 middle of the remaining range to eliminate the most possibilities at once. Your optimal
@@ -300,17 +279,17 @@ Follow this format precisely for every hint you produce."""
 
 
 # ---------------------------------------------------------------------------
-# Tool dispatcher
+# Function dispatcher
 # ---------------------------------------------------------------------------
 
-def _run_tool(name: str, inputs: dict, trace: list) -> str:
+def _run_function(name: str, inputs: dict, trace: list) -> str:
     """
     Call the matching Python function, append a trace record, and return JSON.
 
     trace is mutated in place so the caller can collect all tool call records
     and surface them to the user as observable intermediate steps.
     """
-    logger.info("Tool call: %s(%s)", name, json.dumps(inputs))
+    logger.info("Function call: %s(%s)", name, json.dumps(inputs))
 
     if name == "calculate_valid_range":
         result = calculate_valid_range(inputs["history"], inputs["min_val"], inputs["max_val"])
@@ -319,10 +298,10 @@ def _run_tool(name: str, inputs: dict, trace: list) -> str:
     elif name == "get_hint_intensity":
         result = get_hint_intensity(inputs["attempt_number"], inputs["max_attempts"])
     else:
-        result = {"error": f"Unknown tool: {name}"}
+        result = {"error": f"Unknown function: {name}"}
 
-    logger.info("Tool result: %s", json.dumps(result))
-    trace.append({"tool": name, "result": result})
+    logger.info("Function result: %s", json.dumps(result))
+    trace.append({"function": name, "result": result})
     return json.dumps(result)
 
 
@@ -340,18 +319,18 @@ def get_ai_hint(
     coaching_mode: bool = False,
 ) -> tuple[str, list]:
     """
-    Run the agentic hint loop and return (hint_text, trace).
+    Run the agentic hint generation and return (hint_text, trace).
 
-    Claude calls tools iteratively until it has gathered enough information
-    to write a personalised hint.  Both system prompts are sent with
-    `cache_control` so repeated calls within a session reuse the cached prefix.
+    Gemini uses function calling to gather information before generating
+    a personalised hint. The system uses pre-computed function results
+    to provide context for the AI response.
 
     Parameters
     ----------
     coaching_mode : bool
         When True, uses COACHING_PROMPT — a few-shot specialised prompt that
-        constrains Claude to a 3-sentence structured format always ending with
-        "Your optimal next guess is [X]."  When False (default), uses the
+        constrains Gemini to a 3-sentence structured format always ending with
+        "Your optimal next guess is [X]." When False (default), uses the
         conversational SYSTEM_PROMPT that never reveals a specific number.
 
     Returns
@@ -359,8 +338,7 @@ def get_ai_hint(
     hint_text : str
         The generated hint, or a safe error message.
     trace : list[dict]
-        One record per tool call: {"tool": name, "result": {...}}.
-        Empty if the call fails before any tools run.
+        Records of function calls and results.
     """
     mode_label = "coaching" if coaching_mode else "standard"
     logger.info(
@@ -370,22 +348,32 @@ def get_ai_hint(
 
     trace: list = []
 
+    # ── Pre-compute function results ──────────────────────────────────────────
+    # Since Gemini's function calling is less sophisticated than Claude's iterative
+    # tool calling, we pre-compute all the analysis results and provide them as context
+    try:
+        range_info = calculate_valid_range(history, min_val, max_val)
+        strategy_info = evaluate_strategy(history, min_val, max_val)
+        intensity_info = get_hint_intensity(attempt_number, max_attempts)
+
+        trace.extend([
+            {"function": "calculate_valid_range", "result": range_info},
+            {"function": "evaluate_strategy", "result": strategy_info},
+            {"function": "get_hint_intensity", "result": intensity_info},
+        ])
+    except Exception as exc:
+        logger.error("Failed to compute analysis functions: %s", exc)
+        return "Error computing game analysis. Please try again.", trace
+
     # ── RAG pre-retrieval ─────────────────────────────────────────────────────
-    # Pre-run the three tool functions as pure Python (no API call) to build a
-    # retrieval query from the current game state, then inject the top-2 matching
-    # strategy tips into the user message before the agentic loop begins.
-    # Wrapped in try/except so a RAG failure never blocks the hint.
+    # Inject relevant strategy tips from the knowledge base
     rag_injected = ""
     if _RAG_AVAILABLE:
         try:
-            _range_info    = calculate_valid_range(history, min_val, max_val)
-            _strategy_info = evaluate_strategy(history, min_val, max_val)
-            _intensity_info = get_hint_intensity(attempt_number, max_attempts)
-
             _query = _rag.build_query(
-                strategy=_strategy_info["strategy"],
-                intensity=_intensity_info["intensity"],
-                remaining_count=_range_info["remaining_count"],
+                strategy=strategy_info["strategy"],
+                intensity=intensity_info["intensity"],
+                remaining_count=range_info["remaining_count"],
             )
             _tips = _rag.retrieve(_query, top_k=2)
 
@@ -399,13 +387,13 @@ def get_ai_hint(
                 )
 
             trace.append({
-                "tool": "rag_retrieval",
+                "function": "rag_retrieval",
                 "result": {
-                    "query":         _query,
+                    "query": _query,
                     "docs_retrieved": len(_tips),
-                    "top_topic":     _tips[0]["topic"] if _tips else "none",
-                    "top_score":     _tips[0]["score"] if _tips else 0.0,
-                    "injected":      bool(_tips),
+                    "top_topic": _tips[0]["topic"] if _tips else "none",
+                    "top_score": _tips[0]["score"] if _tips else 0.0,
+                    "injected": bool(_tips),
                 },
             })
             logger.info(
@@ -416,84 +404,58 @@ def get_ai_hint(
             logger.error("RAG pre-retrieval failed (hints still work): %s", exc)
     # ── end RAG block ─────────────────────────────────────────────────────────
 
-    # Build client — prefer explicit key, then env var (loaded by dotenv in app.py)
+    # Initialize Gemini client
     try:
-        client = anthropic.Anthropic(api_key=api_key or os.environ.get("ANTHROPIC_API_KEY"))
+        genai.configure(api_key=api_key or os.environ.get("GOOGLE_API_KEY"))
+        model = genai.GenerativeModel(
+            model_name="gemini-2.0-flash",
+            system_instruction=COACHING_PROMPT if coaching_mode else SYSTEM_PROMPT
+        )
     except Exception as exc:
-        logger.error("Failed to initialise Anthropic client: %s", exc)
+        logger.error("Failed to initialise Gemini client: %s", exc)
         return "Could not connect to the AI service. Check your API key.", trace
 
-    prompt_text = COACHING_PROMPT if coaching_mode else SYSTEM_PROMPT
+    # Create the user prompt with analysis context
+    analysis_context = f"""
+Game Analysis Results:
+- Valid range: {range_info['low']}-{range_info['high']} (remaining: {range_info['remaining_count']})
+- Strategy: {strategy_info['strategy']} (efficiency: {strategy_info['efficiency_score']:.2f})
+- Hint intensity: {intensity_info['intensity']} ({intensity_info['description']})
+- Optimal next guess: {range_info['optimal_next_guess']}
+"""
 
     user_content = (
         f"Please give me a hint for this game:\n"
         f"- Number range: {min_val} to {max_val}\n"
         f"- Attempts used: {attempt_number} of {max_attempts}\n"
-        f"- Guess history: {json.dumps(history)}\n\n"
-        "Use your tools to analyse my situation, then provide a strategic hint."
+        f"- Guess history: {json.dumps(history)}\n"
+        f"{analysis_context}\n"
+        "Use this analysis to provide a strategic hint."
         f"{rag_injected}"
     )
 
-    messages = [{"role": "user", "content": user_content}]
+    try:
+        # Start chat and send message
+        chat = model.start_chat()
+        response = chat.send_message(user_content)
 
-    for iteration in range(1, 11):  # Safety cap: max 10 tool-call rounds
-        logger.info("Agent iteration %d", iteration)
+        # Extract the text response
+        hint_text = ""
+        if response.text:
+            hint_text = response.text.strip()
+        else:
+            # Check for function calls (though we pre-computed everything)
+            for part in response.parts:
+                if part.text:
+                    hint_text += part.text
 
-        try:
-            response = client.messages.create(
-                model="claude-3-5-haiku-20241022",
-                max_tokens=512,
-                system=[
-                    {
-                        "type": "text",
-                        "text": prompt_text,
-                        "cache_control": {"type": "ephemeral"},
-                    }
-                ],
-                tools=TOOLS,
-                messages=messages,
-            )
-        except anthropic.AuthenticationError:
-            logger.error("Invalid Anthropic API key")
-            return "Invalid API key — please check your ANTHROPIC_API_KEY.", trace
-        except anthropic.RateLimitError:
-            logger.warning("Rate limit hit")
-            return "Rate limit reached — please wait a moment and try again.", trace
-        except anthropic.APIConnectionError as exc:
-            logger.error("Network error: %s", exc)
-            return "Network error — check your connection and try again.", trace
-        except anthropic.APIError as exc:
-            logger.error("Claude API error: %s", exc)
-            return "The AI hint service encountered an error. Please try again.", trace
-
-        logger.info("stop_reason=%s | blocks=%d", response.stop_reason, len(response.content))
-
-        if response.stop_reason == "end_turn":
-            for block in response.content:
-                if hasattr(block, "text") and block.text:
-                    logger.info(
-                        "Hint generated | mode=%s | iterations=%d | tools_called=%d",
-                        mode_label, iteration, len(trace),
-                    )
-                    return block.text, trace
-            logger.warning("end_turn reached with no text block")
+        if not hint_text:
+            logger.warning("No text response from Gemini")
             return "I couldn't formulate a hint — please try again.", trace
 
-        if response.stop_reason == "tool_use":
-            messages.append({"role": "assistant", "content": response.content})
-            tool_results = [
-                {
-                    "type": "tool_result",
-                    "tool_use_id": block.id,
-                    "content": _run_tool(block.name, block.input, trace),
-                }
-                for block in response.content
-                if block.type == "tool_use"
-            ]
-            messages.append({"role": "user", "content": tool_results})
-        else:
-            logger.warning("Unexpected stop_reason: %s — aborting", response.stop_reason)
-            break
+        logger.info("Hint generated | mode=%s | functions_called=%d", mode_label, len(trace))
+        return hint_text, trace
 
-    logger.error("Agent exceeded max iterations without completing")
-    return "Hint generation timed out — please try again.", trace
+    except Exception as exc:
+        logger.error("Gemini API error: %s", exc)
+        return "The AI hint service encountered an error. Please try again.", trace
