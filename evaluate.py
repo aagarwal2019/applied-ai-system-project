@@ -24,7 +24,7 @@ from ai_agent import calculate_valid_range, evaluate_strategy, get_hint_intensit
 from logic_utils import check_guess, get_range_for_difficulty, parse_guess, update_score
 from rag import build_query, retrieve
 
-load_dotenv()
+load_dotenv(override=True)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

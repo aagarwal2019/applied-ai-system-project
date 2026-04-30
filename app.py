@@ -8,8 +8,8 @@ from dotenv import load_dotenv
 from ai_agent import get_ai_hint
 from logic_utils import check_guess, get_range_for_difficulty, parse_guess, update_score
 
-# Load GOOGLE_API_KEY from a local .env file if present (no-op otherwise)
-load_dotenv()
+# Load GOOGLE_API_KEY from a local .env file, overriding any existing shell value
+load_dotenv(override=True)
 
 # ---------------------------------------------------------------------------
 # App-level logging
