@@ -47,8 +47,8 @@ def get_hot_cold(guess, secret, low, high):
 
 st.set_page_config(page_title="Glitchy Guesser", page_icon="🎮")
 
-st.title("🎮 Game Glitch Investigator")
-st.caption("An AI-generated guessing game. Something is off.")
+st.title("🎮 Glitchy Guesser")
+st.caption("An guessing game that is powered by AI.")
 
 # ---------------------------------------------------------------------------
 # Sidebar — settings
