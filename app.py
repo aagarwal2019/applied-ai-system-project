@@ -333,4 +333,4 @@ if valid_history:
     st.table(rows)
 
 st.divider()
-st.caption("Built by an AI that claims this code is production-ready.")
+st.caption("Powered by Google Gemini")
